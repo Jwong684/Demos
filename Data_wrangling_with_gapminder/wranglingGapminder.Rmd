@@ -1,0 +1,28 @@
+---
+title: "wranglingGapminder"
+author: "Jasper Wong"
+date: "February 22, 2017"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+##Introduction
+
+This analysis profiles a look into the [gapminder](https://github.com/jennybc/gapminder) dataset, as per the course [STAT545](http://stat545.com/) taught by Jenny Bryan.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+suppressWarnings(suppressPackageStartupMessages(library(ggplot2)))
+suppressWarnings(library(reshape2))
+suppressWarnings(suppressPackageStartupMessages(library(tidyverse)))
+suppressWarnings(library(knitr))
+```
+
+```{r, echo = FALSE}
+gapminder <- read.delim(file = "http://www.stat.ubc.ca/~jenny/notOcto/STAT545A/examples/gapminder/data/gapminderDataFiveYear.txt")
+```
+
+##

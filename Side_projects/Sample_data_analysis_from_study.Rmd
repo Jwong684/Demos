@@ -1,0 +1,39 @@
+---
+title: "Side_projects_Statistical_analyses"
+author: "Jasper Wong"
+date: "February 22, 2017"
+output: html_document
+---
+
+#Sample analysis: 
+
+Example of a multidimensional scaling analysis done as a result of a statistical assignment for another student.
+
+```{r}
+suppressWarnings(suppressPackageStartupMessages(library(ggplot2)))
+suppressWarnings(library(reshape2))
+suppressWarnings(suppressPackageStartupMessages(library(tidyverse)))
+suppressWarnings(library(knitr))
+suppressPackageStartupMessages(library(MASS))
+
+Mimi_data <- read.csv("~/Homework/UBC/Side projects/MimiData/Mimi_data_v2.csv")
+##str(Mimi_data)
+colnames(Mimi_data) <- c("ID","gender","age","race","marital.st","education","Insuraance","pre.test","post.test","eval1","eval2","eval3","f.u")
+Mimi_data$pre.test <- as.numeric(as.character(Mimi_data$pre.test))
+Mimi_data$post.test <- as.numeric(as.character(Mimi_data$post.test))
+Mimi_data$f.u <- as.numeric(Mimi_data$f.u)
+Mimi_data$age <- as.numeric(Mimi_data$age)
+Mimi_data[,1:2] <- lapply(Mimi_data[,1:2], factor)
+Mimi_data[,4:7] <- lapply(Mimi_data[,4:7], factor)
+Mimi_data[,10:12] <- lapply(Mimi_data[,10:12], factor)
+Mimi_data$difference <- Mimi_data$post.test - Mimi_data$pre.test
+
+Mimi_data$age_bin <- factor(unlist(Mimi_data$age_bin))
+dist_Mimi_data <- dist(Mimi_data[,c(2,3,4,5,6,7,9,14)])
+fit <- isoMDS(dist_Mimi_data, k = 2)
+fit <- as.data.frame(fit)
+fit$followup <- Mimi_data$f.u
+fit$race <- Mimi_data$race
+ggplot(fit, aes(x = points.1, y = points.2)) + geom_point(aes(color = factor(followup)), size=5) + xlab("Vector 1") + ylab("Vector 2") + ggtitle("Nonmetric Multidimensional Scaling", subtitle = "of all patients relative to variations in 8 categories") + scale_colour_discrete(name = "Followup?", labels = c("Yes", "No"))
+```
+
