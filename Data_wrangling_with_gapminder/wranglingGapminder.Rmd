@@ -2,17 +2,16 @@
 title: "wranglingGapminder"
 author: "Jasper Wong"
 date: "February 22, 2017"
-output:
-  html_document:
-    toc: true
-    toc_float: true
+output: github_document
 ---
 
 ##Introduction
 
 This analysis profiles a look into the [gapminder](https://github.com/jennybc/gapminder) dataset, as per the course [STAT545](http://stat545.com/) taught by Jenny Bryan.
 
-```{r setup, include=FALSE}
+Gapminder is a well known dataset that highlights a number of descriptors for countries, including Gdp per capita, life expectancy, and population throughout years of data collection.
+
+```{r setup, include=FALSE, message = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
 suppressWarnings(suppressPackageStartupMessages(library(ggplot2)))
@@ -25,4 +24,32 @@ suppressWarnings(library(knitr))
 gapminder <- read.delim(file = "http://www.stat.ubc.ca/~jenny/notOcto/STAT545A/examples/gapminder/data/gapminderDataFiveYear.txt")
 ```
 
-##
+##Basic analyses
+
+###Gdp per capita:
+
+Using the package gganimate to illustrate the change in data points over time.
+```{r, echo = FALSE, results = 'hide'}
+library(gganimate)
+
+p <- ggplot(gapminder, aes(x = gdpPercap,  y = lifeExp, colour = continent, size = pop, frame = year)) + geom_point() +
+  scale_x_log10()
+
+gg_animate(p)
+```
+
+
+A heatmap can be generated as follows.
+
+```{r, echo = FALSE, message = FALSE, results = 'hide'}
+library(pheatmap)
+library(RColorBrewer)
+matrixcolors <- brewer.pal(8, "RdBu")
+gapminder$log_gdpPercap <- log10(gapminder$gdpPercap)
+gapminder_gdp_years <- subset(gapminder, select = c(country, year, log_gdpPercap))
+gdpYears <- spread(gapminder_gdp_years, year, log_gdpPercap)
+gdpYears_matrix <- as.matrix(sapply(gdpYears[,2:13], as.numeric))
+rownames(gdpYears_matrix) <- gdpYears[,1]
+pheatmap(gdpYears_matrix, color = matrixcolors, cluster_cols = FALSE)
+```
+

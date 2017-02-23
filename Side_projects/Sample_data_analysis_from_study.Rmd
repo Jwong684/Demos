@@ -2,14 +2,15 @@
 title: "Side_projects_Statistical_analyses"
 author: "Jasper Wong"
 date: "February 22, 2017"
-output: html_document
+output: github_document
 ---
 
 #Sample analysis: 
 
 Example of a multidimensional scaling analysis done as a result of a statistical assignment for another student.
 
-```{r}
+```{r, echo = FALSE, message = FALSE, results = 'hide'}
+
 suppressWarnings(suppressPackageStartupMessages(library(ggplot2)))
 suppressWarnings(library(reshape2))
 suppressWarnings(suppressPackageStartupMessages(library(tidyverse)))
@@ -28,7 +29,6 @@ Mimi_data[,4:7] <- lapply(Mimi_data[,4:7], factor)
 Mimi_data[,10:12] <- lapply(Mimi_data[,10:12], factor)
 Mimi_data$difference <- Mimi_data$post.test - Mimi_data$pre.test
 
-Mimi_data$age_bin <- factor(unlist(Mimi_data$age_bin))
 dist_Mimi_data <- dist(Mimi_data[,c(2,3,4,5,6,7,9,14)])
 fit <- isoMDS(dist_Mimi_data, k = 2)
 fit <- as.data.frame(fit)
