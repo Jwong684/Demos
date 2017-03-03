@@ -15,11 +15,8 @@ Basic analyses
 
 ### Gdp per capita:
 
-Using the package gganimate to illustrate the change in data points over time. <video   controls loop><source src="wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-.webm" />
-<p>
-video of chunk unnamed-chunk-2
-</p>
-</video>
+Looking at how gdp per capita changes over time. ![](wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-1.png)
+
 A heatmap can be generated as follows.
 
     ## Warning: package 'pheatmap' was built under R version 3.3.2

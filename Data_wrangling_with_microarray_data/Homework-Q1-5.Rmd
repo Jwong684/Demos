@@ -29,9 +29,9 @@ library(tibble)
 
 ```{r, echo = FALSE, message = FALSE, include = FALSE}
 library(readr)
-data <- read.table("~/R/GSAT540Seminar/data.txt", row.names = 1)
+data <- read.table("~/R/Demos/Data_wrangling_with_microarray_data/data.txt", row.names = 1)
 
-metadata <- read.table("~/R/GSAT540Seminar/NHBE_design.txt", 
+metadata <- read.table("~/R/Demos/Data_wrangling_with_microarray_data/NHBE_design.txt", 
     row.names = 1)
 
 ```
