@@ -15,8 +15,11 @@ Basic analyses
 
 ### Gdp per capita:
 
-Using the package gganimate to illustrate the change in data points over time. ![](wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-1.png)![](wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-2.png)![](wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-3.png)![](wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-4.png)![](wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-5.png)![](wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-6.png)![](wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-7.png)![](wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-8.png)![](wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-9.png)![](wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-10.png)![](wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-11.png)![](wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-12.png)
-
+Using the package gganimate to illustrate the change in data points over time. <video   controls loop><source src="wranglingGapminder_files/figure-markdown_github/unnamed-chunk-2-.webm" />
+<p>
+video of chunk unnamed-chunk-2
+</p>
+</video>
 A heatmap can be generated as follows.
 
     ## Warning: package 'pheatmap' was built under R version 3.3.2

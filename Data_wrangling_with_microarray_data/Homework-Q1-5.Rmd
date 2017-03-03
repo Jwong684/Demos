@@ -1,0 +1,466 @@
+---
+title: "Homework-Q1-5"
+author: "Jasper Wong"
+date: "February 24, 2017"
+output: github_document
+always_allow_html: yes
+---
+
+#Introduction:
+
+I will be analyzing a publicly-available gene expression study of normal human bronchial epithelial (NHBE) cells, run on the Affymetrix GeneChip Human Genome U133 Plus 2.0 Array. Data was taken from the study: [Time course of NHBE cells exposed to whole cigarette smoke (full flavor)](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE10718), and data was further filtered and taken from the [GSAT540 course website](https://github.com/STAT540-UBC/STAT540-UBC.github.io/blob/master/homework/assignment/homework.md).
+
+Note: Please refer to the .Rmd file to examine the specific code involved. I have set most of the chunks to echo = FALSE, to prevent excessive cluttering of code in the markdown.
+
+#Question 1: Data Inspection
+
+##1.1 Download and inspect the data
+
+Packages needed for this assignment:
+```{r setup, message = FALSE, include=FALSE}
+#from biocLite
+suppressWarnings(library(limma))
+suppressWarnings(library(edgeR))
+suppressPackageStartupMessages(library(dplyr))
+library(tibble)
+
+```
+
+
+```{r, echo = FALSE, message = FALSE, include = FALSE}
+library(readr)
+data <- read.table("~/R/GSAT540Seminar/data.txt", row.names = 1)
+
+metadata <- read.table("~/R/GSAT540Seminar/NHBE_design.txt", 
+    row.names = 1)
+
+```
+
+Description of the datasets:
+
+Data: 22737 x 23 dataframe
+There are 22737 genes in the data set and 23 samples. The expression value of each of these genes is included in the dataset. 
+
+Metadata: 23 x 3 dataframe
+This dataset includes the sample name, with corresponding treatments, time points, and external data name.
+
+Examining the breakdown for the treatment and time, I see that there are two treatments (control and cigarette) and 4 time points (1h, 2h, 4h, 24h). These samples are divvied up into groups of three for each treatment-time pair. However, there is one sample missing from the treatment + 1h group, which may affect the balance of the design. Overall, the design looks good.
+
+##1.2 Basic data manipulation
+
+I used the functions substr to only take the numeric portion of the vector; as.character to turn it into a character vector; as.numeric to convert that vector into a numeric vector.
+
+```{r}
+metadata$num_time <- substr(as.character(metadata$time), 1, nchar(as.character(metadata$time))-2)
+metadata$num_time <- as.numeric(metadata$num_time)
+
+class(metadata$num_time)
+unique(metadata$num_time)
+```
+
+##1.3 Basic graphing
+
+Create a plot showing the gene expression data for a random probe and the averages for all possible combinations of agent and time.
+
+I'm going to choose probe 1294_at to examine. I specifically plotted the averages for each time point (highlighted in red).
+
+```{r, echo = FALSE}
+suppressWarnings(library(ggplot2))
+
+probe1294 <- as.data.frame(t(data)) %>% dplyr::select(starts_with("1294_at"))
+probe1294 <- cbind(probe1294, metadata)
+colnames(probe1294) <- c("expression_level", "ExternalID", "Treatment", "time", "num_time")
+
+ggplot(probe1294, aes(x = time, y = expression_level)) + facet_wrap(~Treatment) + stat_summary(fun.y = "mean", colour = "red", size = 2, geom = "point") + ylab("Average expression level")
+
+```
+
+
+#Question 2: Assessing data quality
+
+##2.1 Examine sample-to-sample correlations in a heatmap
+
+Let's look at the data when sorted by time first.
+
+```{r}
+suppressWarnings(library(pheatmap))
+
+corrMatrix <- cor(data)
+dim(corrMatrix)
+
+
+#ordering the samples by time and sorting by agent
+metadata3 <- metadata[with(metadata, order(time, Treatment)),]
+rownames(metadata3)
+
+#this actually changes the rownames/row orders in the linear model later on so it will shoot out different answers
+
+# ordering, alternate way
+levels(metadata$time) <- c("1_h","2_h","4_h","24_h")
+
+metadata3 <- metadata %>%
+	rownames_to_column("sample") %>%
+	arrange(time, Treatment) %>%
+	column_to_rownames("sample")
+
+annotation_row = data.frame(metadata3$time, metadata3$Treatment)
+rownames(annotation_row) = rownames(metadata3)
+
+corrMatrix <- corrMatrix[rownames(metadata3),rownames(metadata3)]
+diag(corrMatrix) <- NA
+
+pheatmap(corrMatrix, cluster_rows = FALSE, cluster_cols = FALSE, annotation_row = annotation_row)
+```
+
+Note: Do not try to order the dataframe as above. I found an issue where if you order data using  metadata[with(metadata, order(time, Treatment)),] (which does what you intend for pheatmap), but will continue to mess up every result you have from the limma and eBayes. After some careful examining, it appears that this error arises from the design matrix that is generated. The coordinates of the design matrix maps out based on the rownames of the metadata. Once you reorder the dataset, the rownames get altered as well. When you try to design a matrix, the design matrix will look at the variables associated with the new row1 of the reordered metadata, and will then assume that it matches the first column in the data matrix. This will mess everything up.
+
+There doesn't seem to be any trend here in terms of time points. I took the diagonal to be N/A to increase the contrast in colours for other values. There also appears to be an outlier GSE10718_Biomat_10, though we'd need to look into that further.
+
+There are small pockets of intense correlation, however, time does not feel like a strong factor.
+
+
+Let's look at it in terms of treatment then.
+
+```{r, echo = FALSE}
+#ordering the samples by agent and sorting by time
+#metadata2 <- metadata[with(metadata, order(Treatment, time)),]
+#rownames(metadata2)
+#this actually changes the rownames/row orders in the linear model later on so it will shoot out different answers
+
+# ordering, alternate way way
+metadata2 <- metadata %>%
+	rownames_to_column("sample") %>%
+	arrange(Treatment, time) %>%
+	column_to_rownames("sample")
+
+corrMatrix <- corrMatrix[rownames(metadata2),rownames(metadata2)]
+pheatmap(corrMatrix, cluster_rows = FALSE, cluster_cols = FALSE, annotation_row = annotation_row)
+
+```
+
+There appears to be a lower correlation between samples that were in the control and treatment group (specifically sections with more blue). However, this trend doesn't appear to be consistent. At the same time, the trend is a lot more apparent when sorting by treatment groups.
+
+
+##2.2 Assess the presence of outlier samples
+
+Like mentioned above, GSE10718_Biomat_10 sticks out very distinctly relative to the rest. Let's look at this in terms of a boxplot of correlations.
+
+```{r, echo = FALSE}
+suppressWarnings(library(tidyr))
+
+corrMatrix_copy <- corrMatrix
+diag(corrMatrix_copy) <- NA
+stackcorrMatrix <- as.data.frame(corrMatrix_copy) %>%
+	rownames_to_column("sample1") %>%
+	gather(key = sample2, value = correlation, -sample1) %>%
+	mutate(is_biomat_10 = (sample2 == "GSE10718_Biomat_10" | sample1 == "GSE10718_Biomat_10"))
+
+suppressWarnings(
+	stackcorrMatrix %>% 
+	ggplot(aes(x = sample1, y = correlation)) +
+	geom_boxplot() +
+	geom_point(aes(color = is_biomat_10)) +
+	ylab("Correlation to every other sample") +
+	coord_flip()
+)
+```
+
+Sample Biomat_10 stands out to the bottom end of every sample, and in many of these samples, it is considered as an outlier. This is an explicit pattern in the above boxplot.
+
+To make this clearer, multidimensional scaling (from the package MASS) was used to highlight the distance of this sample from the rest of the samples.
+
+```{r, echo = FALSE}
+suppressPackageStartupMessages(library(MASS))
+dist_stackcorrMatrix <- dist(corrMatrix_copy)
+fit <- isoMDS(dist_stackcorrMatrix, k = 2)
+fit <- as.data.frame(fit)
+fit <- mutate(fit,is_biomat_10 = rownames(fit) == "GSE10718_Biomat_10")
+
+ggplot(fit, aes(x = points.1, y = points.2)) + geom_point(aes(color = factor(is_biomat_10)), size=5) + xlab("Vector 1") + ylab("Vector 2") + scale_colour_discrete(name = "GSE10718_Biomat_10?") 
+
+```
+
+This shows that Biomat_10 is a sample that is very far away from the rest of the cluster, another indication that it is an outlier.
+
+#Question 3: Differential expression with respect to treatment
+
+##3.1 Linear model
+
+```{r}
+
+metadata$Treatment <- relevel(metadata$Treatment, ref = "control")
+sampleDesMat <- model.matrix(~ Treatment, metadata)
+
+sampleFit <- lmFit(data, sampleDesMat)
+sampleEbFit <- eBayes(sampleFit)
+
+
+```
+
+The model used here is under the linear models for genetics package (limma). The linear model used falls under the standard linear model equation:
+
+Y = Xa + epsilon,
+
+where Y is a column vector of expected gene expression, 
+X is a design matrix that represents the treatments Control and Cigarette, 
+a is a column vector that indicates the parameters of the linear model (derived from the equation itself), 
+epsilon represents a column vector for errors that deviate from your expected results.
+
+In the context of this model, a linear regression (one-way ANOVA) is done to compare the variances between treatment groups.
+
+
+##3.2 Looking at hits
+
+Looking specifically at the output of the limma package. Let's take a look at the distribution of p-values in the form of a histogram.
+
+```{r, echo = FALSE}
+#as.data.frame(sampleEbFit) %>%
+#	plot(as.numeric(as.character(sampleEbFit$F.p.value)))
+
+topTableEbFit <- topTable(sampleEbFit, coef = 2, number = 22737)
+topTableEbFit %>% 
+	ggplot(aes(x = P.Value)) + geom_histogram()
+
+```
+
+There appears to be an increased inflection of p-values as P.Value approaches 0. This is indicative of a significant and real effect observed.
+
+Let's look at the FDR:
+
+```{r, echo = FALSE}
+topTable(sampleEbFit, number = nrow(data), p.value = 0.001, adjust.method = "none") %>% dim()
+
+significantSampleEbFit <- topTableEbFit %>% 
+	mutate( probes = rownames(topTableEbFit)) %>% 
+	filter(P.Value <= 1e-3)
+
+FDRSampleEbFit <- topTableEbFit %>% 
+	filter(adj.P.Val <= 0.05)
+
+```
+
+It appears there are 805 genes with an unadjusted p-value of 1e-3 or less. Alternately, there are only 1238 genes with an adjusted p-value of less than 0.05.
+
+Let's take the top 50 probes based on the model and put it in a heatmap sorted row-wise by adjusted p-values and sorted column-wise by Treatment and time.
+
+```{r, echo = FALSE}
+
+#finding the top 50 in toptable
+top50probes <- topTable(sampleEbFit, coef = 2, number = 50, sort.by = "p")
+top50probes_adjP <- data.frame(top50probes[,"adj.P.Val"], row.names = rownames(top50probes))
+#calling a data frame with the names of these probes
+top50probes_names <- as.data.frame(rownames(top50probes))
+#sorting samples by treatment and time
+metadata_Treatmentsorted <- metadata %>%
+	rownames_to_column("sample") %>%
+	arrange(Treatment, time) %>%
+	column_to_rownames("sample")
+metadata_Treatmentsorted <- metadata_Treatmentsorted[,c("Treatment","time")]
+
+#creating a new data frame with expression patterns of these probes and their ordered samples
+top50_expressionMatrix <- data[unlist(top50probes_names), rownames(metadata_Treatmentsorted)]
+
+
+pheatmap(top50_expressionMatrix, cluster_rows = FALSE, cluster_cols = FALSE, annotation_col = metadata_Treatmentsorted)
+```
+
+
+```{r}
+#Checking the FDR of the 50th probe.
+(FDR <- top50probes[50, 'adj.P.Val'])
+
+#Estimating the expected number of false discoveries based on this.
+FDR * 50
+```
+
+If 50 is our number of significant genes (S), and our FDR (assumed to be the highest one in our list) to be 0.001035992, then it is expected that 0.05179962 genes in this top 50 would be false discoveries.
+Essentially, we would not expect any of these genes to be a false discovery.
+
+#Question 4: Differential expression with respect to time
+
+Treating time as a quantitative covariate (hours) instead of treatment.
+
+##4.1 Linear model
+
+```{r, echo = FALSE}
+
+timeDesMat <- model.matrix(~ num_time, metadata)
+
+timeFit <- lmFit(data, timeDesMat)
+timeEbFit <- eBayes(timeFit)
+
+topTabletimeEbFit <- topTable(timeEbFit, coef = 2, number = 22737)
+
+significanttimeEbFit <- topTabletimeEbFit %>% 
+	filter(P.Value <= 1e-3)
+
+FDRtimeeEbFit <- topTabletimeEbFit %>% 
+	filter(adj.P.Val <= 0.05)
+
+
+```
+
+Using time as a numeric covariate, we can see that there are 958 genes that has an unadjusted p-value of 1e-3 or less and 1451 genes with a FDR of 0.05 or less.
+
+#Question 5: Differential expression analysis with a full model
+
+##5.1 Quantify the number of hits for treatment
+
+Finally, let's look at the effects of both factors.
+
+```{r}
+bothDesMat <- model.matrix(~ Treatment * num_time, metadata)
+
+bothFit <- lmFit(data, bothDesMat)
+bothEbFit <- eBayes(bothFit)
+
+topTablebothEbFit <- topTable(bothEbFit, coef = 2, number = Inf)
+
+sum(topTablebothEbFit$P.Value < 0.001)
+
+significantbothEbFit <- topTablebothEbFit %>% 
+	mutate(probes = rownames(topTablebothEbFit)) %>% 
+	filter(P.Value <= 1e-3)
+
+FDRbothEbFit <- topTablebothEbFit %>% 
+	filter(adj.P.Val <= 0.05)
+
+```
+
+621 probes are treated as significant based on an unadjusted p-value cutoff of 1e-3 and 768 probes are treated as significant at the FDR 0.05 level.
+
+This number is different from the values pulled down in 3.2. This is because time is also considered as an impacting factor to the derivation of expression patterns. As a result, the fundamental equation gets modified from Y = B0 + B1x1 + epsilon to Y = B0 + B1x1 + B2x2 + B12x1x2 + epsilon. There is also an interaction effect to consider between the two parameters now.
+
+Let's look at the overlapping probes among the hits based on a p-value cutoff of 1e-3.
+
+```{r, echo = FALSE}
+suppressPackageStartupMessages(library(VennDiagram))
+merge_overlaps <- merge(significantSampleEbFit, significantbothEbFit, by = "probes")
+nrow(merge_overlaps)
+draw.pairwise.venn(area1 = nrow(significantSampleEbFit), area2 = nrow(significantbothEbFit), 
+										 cross.area = nrow(merge_overlaps), 
+									 category = c("Q3 model", "Full model"),
+									 fill = c("blue","red"))
+
+
+topTableEbFit$type <- "Treatment"
+topTablebothEbFit$type <- "Both"
+
+combined <- rbind(subset(topTableEbFit, select = c("P.Value","type")), subset(topTablebothEbFit, select = c("P.Value","type")))
+
+ggplot(combined, aes(x = P.Value, fill = type)) + geom_histogram(alpha = 0.5, position = 'identity') + geom_vline(xintercept = 1e-3)
+	
+```
+
+328 probes are found that overlap between the first model and the full model when using p-value cutoff of 1e-3.
+
+A combined histogram shows that both has a higher number of P-values that are at and below a p-value cutoff of 1e-3 (vertical black line). The distributions are similar. However, there is a higher density of low p-values for the Treatment-only model. This may seem surprising, however, based on the linear model, more explanatory weight is shifted onto the treatment (i.e. y = a1x1). As a result of this, the model tries to explain all differences based on treatment differences.
+
+However, with additional factors in the model (y = a1x1 + a2x2 + a12x1x2), then there is a shift in weight. Not everything in the model needs to be explained by a change in treatment any more, so there would be a lower amount of hits in the treatment component of the full model than there is in the treatment only model.
+
+##5.2 Test the null hypothesis
+
+Null hypothesis: there is no significant interaction between time and treatment.
+
+This interaction term represents the effect of one covariate on another in determining the Y response variable. In this case, it would represent how the time point of cigarette exposure could affect the rate at which gene expression is occurring. 
+
+```{r, echo = FALSE}
+#specifically at interaction effects
+df_bothEbFit <- as.data.frame(bothEbFit) %>% rownames_to_column("probes")
+interaction_unadjp <- df_bothEbFit %>% 
+	filter(p.value.Treatmentcigarette_smoke.num_time <= 1e-3)
+
+#573 interaction effects unadj p < 1e-3
+
+df_bothEbFit$interactionFDR <- p.adjust(df_bothEbFit$p.value.Treatmentcigarette_smoke.num_time, method = "bonferroni")
+
+interaction_FDR <- df_bothEbFit %>% 
+	filter(interactionFDR <= 0.05)
+
+
+interaction_bothEbFit <- topTable(bothEbFit, coef = 4, number = Inf)
+
+sum(interaction_bothEbFit$P.Value < 0.001)
+
+unadjinteraction_bothEbFit <- interaction_bothEbFit %>% 
+	mutate(probes = rownames(interaction_bothEbFit)) %>% 
+	filter(P.Value <= 1e-3)
+
+FDRinteraction_bothEbFit <- interaction_bothEbFit %>% 
+	filter(adj.P.Val <= 0.05)
+
+#664 interaction effects with FDR < 0.05
+
+```
+
+There are 573 probes that are significant at the unadjusted p-value of 1e-3 and 664 probes that are significant at the FDR of 0.05.
+
+##5.3 Plotting probes where interactions does and does not matter
+
+```{r, echo = FALSE}
+stackdata <- data %>%
+	rownames_to_column("sample1") %>%
+	gather(key = sample2, value = expression, -sample1)
+
+newmetadata <- metadata %>% 
+	rownames_to_column("sample2") %>% 
+	dplyr::select(-ExternalID, -time)
+#note that select doesn't default to dplyr version
+
+masterdata <- left_join(stackdata, newmetadata, by = "sample2")
+
+unadj_interaction_master <- masterdata %>% 
+	filter(sample1 %in% interaction_unadjp$probes)
+
+FDR_interaction_master <- masterdata %>% 
+	filter(sample1 %in% interaction_FDR$probes)
+
+#ggplot(unadj_interaction_master, aes(x = num_time, y = expression, color = Treatment)) + geom_smooth(method = "lm") + facet_wrap(~sample1)
+
+#ggplot(FDR_interaction_master, aes(x = num_time, y = expression, color = Treatment)) + geom_smooth(method = "lm") + facet_wrap(~sample1)
+
+#now i want to take a couple from the top of the df_bothEbFit$interactionFDR list and some from the bottom to graph interaction plots
+
+# df_bothEbFit <- df_bothEbFit %>%
+# 	arrange(interactionFDR)
+# top6 <- head(df_bothEbFit$probes)
+# df_bothEbFit <- df_bothEbFit %>%
+# 	arrange(desc(interactionFDR))
+# bottom6 <- head(df_bothEbFit$probes)
+# 
+# top <- FDR_interaction_master %>% filter(sample1 %in% top6)
+# ggplot(top, aes(x = num_time, y = expression, color = Treatment)) + geom_point() + stat_smooth(method = "lm", se = FALSE) + facet_wrap(~sample1)
+
+#try again:
+bothEbFit$genes <- rownames(bothEbFit)
+interactioneffects_topTable <- topTable(bothEbFit, coef = 4, number = Inf)
+interactioneffects_topTable <- interactioneffects_topTable %>%
+	rownames_to_column("sample") %>%
+	arrange(adj.P.Val) %>%
+	column_to_rownames("sample")
+
+top6_again <- head(interactioneffects_topTable$ID)
+
+top_again <- FDR_interaction_master %>% filter(sample1 %in% top6_again)
+ggplot(top_again, aes(x = num_time, y = expression, color = Treatment)) + geom_point() + stat_smooth(method = "lm", se = FALSE) + facet_wrap(~sample1)
+
+interactioneffects_topTable <- interactioneffects_topTable %>%
+	rownames_to_column("sample") %>%
+	arrange(desc(adj.P.Val)) %>%
+	column_to_rownames("sample")
+bot6_again <- head(interactioneffects_topTable$ID)
+
+```
+
+These interaction plots highlight the top 6 probes with the lowest FDR in the interaction effects. This can be observed by the distinct intersections and slopes that characterize the treatment group and the control group over time.
+
+```{r, echo = FALSE}
+#bottom ones (i.e. no interaction effects)
+# bottom <- masterdata %>% filter(sample1 %in% bottom6)
+# ggplot(bottom, aes(x = num_time, y = expression, color = Treatment)) + geom_point() + stat_smooth(method = "lm", se = FALSE) + facet_wrap(~sample1)
+
+bot_again <- masterdata %>% filter(sample1 %in% bot6_again)
+ggplot(bot_again, aes(x = num_time, y = expression, color = Treatment)) + geom_point() + stat_smooth(method = "lm", se = FALSE) + facet_wrap(~sample1)
+```
+
+These interaction plots highlight the bottom 6 probes with the highest FDR in the interaction effects, which indicates that these are the least likely probes to be affected by the interaction effects of treatment and time. This can be observed by the distinctly parallel lines between treatment and control for each of these probes.

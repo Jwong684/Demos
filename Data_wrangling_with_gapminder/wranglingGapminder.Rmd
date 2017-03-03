@@ -28,20 +28,21 @@ gapminder <- read.delim(file = "http://www.stat.ubc.ca/~jenny/notOcto/STAT545A/e
 
 ###Gdp per capita:
 
-Using the package gganimate to illustrate the change in data points over time.
+Looking at how gdp per capita changes over time.
 ```{r, echo = FALSE, results = 'hide'}
-library(gganimate)
 
-p <- ggplot(gapminder, aes(x = gdpPercap,  y = lifeExp, colour = continent, size = pop, frame = year)) + geom_point() +
-  scale_x_log10()
+p <- ggplot(gapminder, aes(x = gdpPercap,  y = lifeExp, colour = continent, size = pop)) + geom_point() + scale_x_log10()
 
-gg_animate(p)
+p + facet_wrap(~year)
+
 ```
 
 
 A heatmap can be generated as follows.
 
 ```{r, echo = FALSE, message = FALSE, results = 'hide'}
+#generating a heat map of gdp per cap's change over the years for every country
+
 library(pheatmap)
 library(RColorBrewer)
 matrixcolors <- brewer.pal(8, "RdBu")
